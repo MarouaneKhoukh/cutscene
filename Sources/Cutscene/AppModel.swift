@@ -435,9 +435,9 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
     /// which `ShareableContent` refuses to call until Screen Recording is
     /// usable, so this never prompts. One listing at a time, and none within
     /// `sourceSettings.windowListRefreshInterval` of the last.
-    func refreshWindows() {
+    func refreshWindows(force: Bool = false) {
         guard permissions.canRecord, windowListTask == nil else { return }
-        if let fetchedAt = windowListFetchedAt,
+        if !force, let fetchedAt = windowListFetchedAt,
             Date().timeIntervalSince(fetchedAt) < sourceSettings.windowListRefreshInterval
         {
             return
@@ -448,7 +448,9 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
         windowListTask = Task { [weak self] in
             defer { self?.windowListTask = nil }
             do {
-                let content = try await ShareableContent.current(permissions: permissions)
+                // Every Space, not just the current one: a window the user wants is
+                // often behind a full-screen app.
+                let content = try await ShareableContent.current(permissions: permissions, onScreenWindowsOnly: false)
                 let groups = WindowsByApplication.grouped(
                     content.windowSummaries, excludingBundleID: own, settings: settings)
                 guard let self else { return }

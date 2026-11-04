@@ -67,12 +67,14 @@ struct WindowsByApplication: Identifiable, Sendable, Equatable {
     ) -> [WindowsByApplication] {
         var byApplication: [String: (name: String, windows: [WindowChoice])] = [:]
         for summary in summaries {
-            guard summary.layer == settings.listedWindowLayer, summary.isOnScreen,
-                let title = summary.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
+            // Windows on other Spaces, minimised ones and untitled ones are all
+            // recordable, so only the layer, a usable size and the owner filter.
+            guard summary.layer == settings.listedWindowLayer,
                 summary.frame.width >= settings.minimumWindowSide, summary.frame.height >= settings.minimumWindowSide,
                 let bundleID = summary.bundleIdentifier, bundleID != own
             else { continue }
             let name = summary.applicationName ?? bundleID
+            let title = summary.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let choice = WindowChoice(
                 id: summary.id, title: title, applicationName: name, bundleID: bundleID, frame: summary.frame)
             byApplication[bundleID, default: (name, [])].windows.append(choice)
