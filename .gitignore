@@ -1,0 +1,17 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode (generated projects and per-user state)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# Built app bundles and exports
+dist/
+*.app
+*.dmg
+
+# macOS
+.DS_Store

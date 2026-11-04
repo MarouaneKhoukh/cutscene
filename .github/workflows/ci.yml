@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test-lint:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode on the runner
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)/Contents/Developer"
+          swift --version
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Check (golden vectors, no Xcode needed)
+        run: swift run cutscene-check
+
+      - name: Lint
+        run: swift format lint --strict --recursive Sources Tests Package.swift
+
+      # ARCHITECTURE §8: Core and Engine stay portable, so the UI frameworks
+      # never reach them. grep exits 1 when nothing matches, which is the pass.
+      - name: Engine boundary (no AppKit or SwiftUI in Core or Engine)
+        run: |
+          if grep -rnE '^import (AppKit|SwiftUI)' Sources/CutsceneCore Sources/CutsceneEngine; then
+            echo "::error::Sources/CutsceneCore and Sources/CutsceneEngine must not import AppKit or SwiftUI"
+            exit 1
+          fi
+
+      - name: Bundle
+        run: scripts/bundle.sh debug
