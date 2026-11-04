@@ -44,6 +44,8 @@ struct AppSettings: Sendable, Equatable {
         case lastRecording = "recent.lastRecording"
         case lastExport = "recent.lastExport"
         case recentPackages = "recent.packages"
+        case countdownSeconds = "recorder.countdownSeconds"
+        case defaultPresetID = "export.defaultPreset"
     }
 
     let settings: AppSettings
@@ -56,6 +58,14 @@ struct AppSettings: Sendable, Equatable {
     /// Whether system audio is captured as its own track.
     var systemAudio: Bool {
         didSet { store.set(systemAudio, forKey: Key.systemAudio.rawValue) }
+    }
+    /// Whole seconds counted down before a take; 0 skips the countdown.
+    var countdownSeconds: Int {
+        didSet { store.set(countdownSeconds, forKey: Key.countdownSeconds.rawValue) }
+    }
+    /// The export preset the auto-render and the editor's sheet start from.
+    var defaultPresetID: String {
+        didSet { store.set(defaultPresetID, forKey: Key.defaultPresetID.rawValue) }
     }
     var recordingsDirectory: URL {
         didSet { store.set(recordingsDirectory.path, forKey: Key.recordingsDirectory.rawValue) }
@@ -80,6 +90,8 @@ struct AppSettings: Sendable, Equatable {
         self.store = store
         self.settings = settings
         microphoneID = store.string(forKey: Key.microphoneID.rawValue)
+        countdownSeconds = store.object(forKey: Key.countdownSeconds.rawValue) as? Int ?? 3
+        defaultPresetID = store.string(forKey: Key.defaultPresetID.rawValue) ?? "1080p"
         systemAudio = store.bool(forKey: Key.systemAudio.rawValue)
         recordingsDirectory =
             Self.directory(store.string(forKey: Key.recordingsDirectory.rawValue)) ?? settings.recordingsDirectory

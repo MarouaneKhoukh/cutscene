@@ -64,10 +64,18 @@ final class AutoRender: TakeRenderer {
     /// Where exports go, read when a render starts, so a folder changed in
     /// Settings applies from the next take on.
     let destination: @MainActor @Sendable () -> URL
+    /// The preset the user chose in Settings, read when a render starts; nil
+    /// keeps the project's own.
+    let preset: @MainActor @Sendable () -> ExportPresetID?
     /// The export in flight, for `cancel()`.
     private let current = Mutex<Exporter?>(nil)
 
-    init(settings: AutoRenderSettings = AutoRenderSettings(), destination: @escaping @MainActor @Sendable () -> URL) {
+    init(
+        settings: AutoRenderSettings = AutoRenderSettings(),
+        preset: @escaping @MainActor @Sendable () -> ExportPresetID? = { nil },
+        destination: @escaping @MainActor @Sendable () -> URL
+    ) {
+        self.preset = preset
         self.settings = settings
         self.destination = destination
     }
@@ -76,7 +84,9 @@ final class AutoRender: TakeRenderer {
         package: RecordingPackage, manifest: RecordingManifest, progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         let directory = await destination()
-        let job = try await Self.job(for: package, manifest: manifest, destination: directory, settings: settings)
+        let override = await preset()
+        let job = try await Self.job(
+            for: package, manifest: manifest, destination: directory, settings: settings, presetOverride: override)
         let exporter = Exporter(settings: settings.writer)
         current.withLock { $0 = exporter }
         defer { current.withLock { $0 = nil } }
@@ -99,17 +109,20 @@ final class AutoRender: TakeRenderer {
     /// name. Static and nonisolated so a caller on any actor gets the plan
     /// built off it.
     static func job(
-        for package: RecordingPackage, manifest: RecordingManifest, destination: URL, settings: AutoRenderSettings
+        for package: RecordingPackage, manifest: RecordingManifest, destination: URL, settings: AutoRenderSettings,
+        presetOverride: ExportPresetID? = nil
     ) async throws -> ExportJob {
         let look = look(of: package, settings: settings)
         let duration = try await duration(of: package, manifest: manifest)
         guard duration > 0 else { throw AutoRenderError.nothingToRender(package.url) }
         let log = try eventLog(of: package, manifest: manifest)
         let plan = RenderPlan.build(log: log, duration: duration, kit: look.kit)
-        let preset = try ExportPreset.resolve(look.export)
+        var export = look.export
+        if let presetOverride { export.preset = presetOverride }
+        let preset = try ExportPreset.resolve(export)
         return ExportJob(
             package: package, keptRanges: [0...duration], plan: plan, kit: look.kit, preset: preset,
-            audio: look.export.audio, destinationDirectory: destination)
+            audio: export.audio, destinationDirectory: destination)
     }
 
     /// The project's `style` and export settings, or the fallbacks when the

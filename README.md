@@ -43,6 +43,12 @@ its table.
 
 What the tree holds today (`make run`):
 
+- **A recorder window** (also reachable with Show Recorder, ⇧⌘R): choose the
+  entire display, one window (thumbnail grid, every Space) or an area, with a
+  live preview, the camera bubble where the export places it, a microphone
+  meter, Pause/Resume, markers, a teleprompter (⇧⌘T) and an Open Recording
+  menu of recent takes.
+
 - **A menu-bar recorder with a launch window.** `LSUIElement`, so no Dock
   icon. The menu offers Record Display ▸ one entry per display, Record
   Window ▸ titles by application, Record Area… (a selection overlay on every

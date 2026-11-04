@@ -697,6 +697,12 @@ public actor CaptureSession {
     /// telemetry, camera frames by the camera recorder). Nothing happens
     /// when already paused. Throws `notRecording` unless a take is
     /// recording.
+    /// Maps a host-clock stamp onto the take's timeline through the clock,
+    /// so paused intervals are excluded; nil while paused or outside the take.
+    public func recordingTime(forHostSeconds seconds: Double) -> Double? {
+        take?.clock.recordingTime(forHostTimeSeconds: seconds)
+    }
+
     public func pause() throws {
         guard case .recording = phase, let take else { throw CaptureSessionError.notRecording }
         guard !take.clock.isPaused else { return }

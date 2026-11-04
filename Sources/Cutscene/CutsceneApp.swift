@@ -36,7 +36,6 @@ enum LaunchArgument {
 struct CutsceneApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var model: AppModel
-    private let settingsStubSettings = SettingsStubSettings()
     /// Alive for the process when `--open-windows` was given, nil otherwise.
     private let launchWindows: LaunchWindowOpener?
 
@@ -86,7 +85,7 @@ struct CutsceneApp: App {
         .windowResizability(.contentSize)
 
         Settings {
-            SettingsStubView(model: model, settings: settingsStubSettings)
+            SettingsView(model: model)
         }
         .windowResizability(.contentSize)
     }
@@ -174,41 +173,5 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
         window.orderFrontRegardless()
-    }
-}
-
-/// The numbers the settings stub is drawn with.
-struct SettingsStubSettings: Sendable, Equatable {
-    /// Fixed content size in points (PLAN M1-F6).
-    var width = 480.0
-    var height = 260.0
-    var verticalPadding = 8.0
-}
-
-/// Stands in until M3-09's `SettingsView`: shows where files go and what the
-/// menu drives, changes nothing.
-struct SettingsStubView: View {
-    let model: AppModel
-    var settings = SettingsStubSettings()
-
-    var body: some View {
-        Form {
-            LabeledContent("Recordings", value: model.defaults.recordingsDirectory.path)
-            LabeledContent("Exports", value: model.defaults.exportsDirectory.path)
-            LabeledContent("Package type", value: RecordingPackage.typeIdentifier)
-            Text(
-                """
-                Output folder, default preset, devices, countdown, system audio, window strategy and the \
-                Input Monitoring opt-in arrive with the settings window (M3-09). Until then the menu holds \
-                the microphone and system-audio choices.
-                """
-            )
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-        .formStyle(.grouped)
-        .padding(.vertical, settings.verticalPadding)
-        .frame(width: settings.width, height: settings.height)
     }
 }

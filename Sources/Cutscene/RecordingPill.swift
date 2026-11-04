@@ -92,6 +92,11 @@ final class HUDPanel: NSPanel {
         let content = RecordingPillContentView(frame: NSRect(origin: .zero, size: size), settings: settings)
         content.onMarker = { [weak self] in self?.model.mark() }
         content.onStop = { [weak self] in self?.model.stop() }
+        content.onPause = { [weak self] in
+            guard let self else { return false }
+            if model.recorder.isPaused { model.resume() } else { model.pause() }
+            return !model.recorder.isPaused
+        }
         panel.contentView = content
         self.panel = panel
         self.content = content
@@ -150,12 +155,15 @@ final class HUDPanel: NSPanel {
 final class RecordingPillContentView: NSVisualEffectView {
     var onMarker: (() -> Void)?
     var onStop: (() -> Void)?
+    /// Toggles the pause; returns whether the take is paused afterwards.
+    var onPause: (() -> Bool)?
 
     private let dot = NSView()
     private let statusLabel = NSTextField(labelWithString: "")
     private let detailLabel = NSTextField(labelWithString: "")
     private let markerButton = NSButton(title: "Marker", target: nil, action: nil)
     private let stopButton = NSButton(title: "Stop", target: nil, action: nil)
+    private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
 
     init(frame: NSRect, settings: RecordingPillSettings) {
         super.init(frame: frame)
@@ -180,15 +188,19 @@ final class RecordingPillContentView: NSVisualEffectView {
         detailLabel.lineBreakMode = .byTruncatingTail
         detailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        for button in [markerButton, stopButton] {
+        for button in [markerButton, pauseButton, stopButton] {
             button.bezelStyle = .rounded
             button.controlSize = .small
             button.target = self
         }
         markerButton.action = #selector(markerPressed)
         stopButton.action = #selector(stopPressed)
+        pauseButton.action = #selector(pausePressed)
+        pauseButton.setAccessibilityIdentifier("pill.pause")
+        stopButton.setAccessibilityIdentifier("pill.stop")
+        markerButton.setAccessibilityIdentifier("pill.marker")
 
-        let stack = NSStackView(views: [dot, statusLabel, detailLabel, NSView(), markerButton, stopButton])
+        let stack = NSStackView(views: [dot, statusLabel, detailLabel, NSView(), markerButton, pauseButton, stopButton])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = settings.spacing
@@ -222,5 +234,10 @@ final class RecordingPillContentView: NSVisualEffectView {
 
     @objc private func stopPressed() {
         onStop?()
+    }
+
+    @objc private func pausePressed() {
+        guard let onPause else { return }
+        pauseButton.title = onPause() ? "Resume" : "Pause"
     }
 }

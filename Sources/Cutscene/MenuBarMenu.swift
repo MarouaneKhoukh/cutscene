@@ -37,6 +37,19 @@ struct MenuBarMenu: View {
         Toggle("System Audio", isOn: $defaults.systemAudio)
         CameraPicker(model: model)
         Divider()
+        Button("Show Recorder") { openWindow(id: "recorder") }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+        Menu("Open Recording") {
+            ForEach(model.recentPackages, id: \.self) { url in
+                Button(url.deletingPathExtension().lastPathComponent) {
+                    openWindow(id: AppModel.editorWindowID, value: url)
+                }
+            }
+            if !model.recentPackages.isEmpty { Divider() }
+            Button("Other Recording…") {
+                model.openRecording { openWindow(id: AppModel.editorWindowID, value: $0) }
+            }
+        }
         Button("Open Last Export") { model.openLastExport() }
             .disabled(model.lastExportURL == nil)
         Button("Open Last Recording") {
@@ -90,6 +103,9 @@ struct MenuBarMenu: View {
         case .selecting:
             Text("Starting…")
         case .recording:
+            Button(model.recorder.isPaused ? "Resume Recording" : "Pause Recording") {
+                if model.recorder.isPaused { model.resume() } else { model.pause() }
+            }
             Button("Stop Recording") { model.stop() }
             Button("Add Marker") { model.mark() }
             Text(recordingStatus)

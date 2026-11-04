@@ -4,6 +4,7 @@ import CutsceneCapture
 import CutsceneCore
 import Foundation
 import Observation
+import UniformTypeIdentifiers
 
 /// A display as the menu lists it, from `NSScreen`, which needs no
 /// permission; the session resolves the id against ScreenCaptureKit when the
@@ -117,7 +118,9 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
             self?.recorderStateChanged(state)
         }
         // M1-13: every finished take is rendered into the exports folder.
-        recorder.renderer = AutoRender { defaults.exportsDirectory }
+        recorder.renderer = AutoRender(
+            preset: { [defaults] in ExportPresetID(rawValue: defaults.defaultPresetID) },
+            destination: { [defaults] in defaults.exportsDirectory })
 
         refreshDisplays()
         refreshMicrophones()
@@ -207,6 +210,24 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
         picker.begin()
     }
 
+    func pause() { recorder.pause() }
+    func resume() { recorder.resume() }
+
+    /// A file chooser for an earlier take (any `.cutscene` package).
+    func openRecording(_ open: @escaping @MainActor (URL) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.package]
+        panel.directoryURL = defaults.recordingsDirectory
+        panel.message = "Choose a .cutscene recording"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url, url.pathExtension == "cutscene" else { return }
+            MainActor.assumeIsolated { open(url) }
+        }
+    }
+
     func stop() {
         Task { await recorder.stop() }
     }
@@ -228,7 +249,8 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
         }
         guard !recoveryBusy, !isBusy, !startingTake else { return }
         let directory = defaults.recordingsDirectory
-        let countdown = countdownSettings
+        var countdown = countdownSettings
+        countdown.seconds = defaults.countdownSeconds
         startingTake = true
         Task {
             defer { startingTake = false }

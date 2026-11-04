@@ -183,6 +183,31 @@ struct RecorderLauncher: View {
             }
             .buttonStyle(.plain)
             .disabled(model.lastRecordingURL == nil)
+            .accessibilityIdentifier("launcher.editLastTake")
+
+            Menu {
+                ForEach(model.recentPackages, id: \.self) { url in
+                    Button(url.deletingPathExtension().lastPathComponent) {
+                        openWindow(id: AppModel.editorWindowID, value: url)
+                    }
+                }
+                if !model.recentPackages.isEmpty { Divider() }
+                Button("Other recording…") {
+                    model.openRecording { openWindow(id: AppModel.editorWindowID, value: $0) }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "clock.arrow.circlepath").frame(width: 20)
+                    Text("Open recording")
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(10)
+                .background(Palette.panel, in: RoundedRectangle(cornerRadius: 10))
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .accessibilityIdentifier("launcher.openRecording")
         }
         .frame(width: settings.sidebarWidth)
         .disabled(model.recorder.isBusy)
@@ -218,6 +243,7 @@ struct RecorderLauncher: View {
                     .strokeBorder(selected ? Palette.accent.opacity(0.6) : Palette.panelBorder))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("launcher.source.\(candidate)")
     }
 
     private func inputRow(symbol: String, title: String, selection: Binding<String?>, options: [(String, String)])
@@ -392,7 +418,11 @@ struct RecorderLauncher: View {
             ProgressView().controlSize(.large)
         case .recording:
             VStack(spacing: 10) {
-                Circle().fill(Palette.record).frame(width: 14, height: 14)
+                if model.recorder.isPaused {
+                    Text("PAUSED").font(.caption.weight(.bold)).foregroundStyle(.orange)
+                } else {
+                    Circle().fill(Palette.record).frame(width: 14, height: 14)
+                }
                 Text(elapsed).font(.system(size: 48, weight: .medium, design: .rounded).monospacedDigit())
                 Text("\(model.recorder.statistics.frames.contentFrames) frames · \(model.recorder.markerCount) markers")
                     .foregroundStyle(.secondary)
@@ -543,8 +573,19 @@ struct RecorderLauncher: View {
     @ViewBuilder private var recordButton: some View {
         switch model.recorder.state {
         case .recording:
-            bigButton("Stop", symbol: "stop.fill", tint: Palette.record) { model.stop() }
-                .keyboardShortcut(".", modifiers: .command)
+            HStack(spacing: 10) {
+                bigButton(
+                    model.recorder.isPaused ? "Resume" : "Pause",
+                    symbol: model.recorder.isPaused ? "play.fill" : "pause.fill", tint: .gray
+                ) {
+                    if model.recorder.isPaused { model.resume() } else { model.pause() }
+                }
+                .keyboardShortcut("p", modifiers: .command)
+                .accessibilityIdentifier("launcher.pause")
+                bigButton("Stop", symbol: "stop.fill", tint: Palette.record) { model.stop() }
+                    .keyboardShortcut(".", modifiers: .command)
+                    .accessibilityIdentifier("launcher.stop")
+            }
         case .countdown, .selecting, .finishing, .rendering:
             bigButton("Cancel", symbol: "xmark", tint: .gray) { model.stop() }
         case .idle, .done, .failed, .renderFailed:
@@ -574,6 +615,7 @@ struct RecorderLauncher: View {
             .shadow(color: tint.opacity(0.45), radius: 14, y: 4)
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("launcher.\(title.lowercased().replacingOccurrences(of: " ", with: "-"))")
     }
 
     // MARK: Actions and sync

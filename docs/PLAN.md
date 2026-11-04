@@ -161,3 +161,27 @@ and the floor moves to 15.2; application capture mode; global hotkey (no header
 in the CLT SDK); live voice processing (the mic would leave the SCK clock);
 precompiled `metallib`; macOS 26 pixel-buffer APIs; MCP server; Developer ID,
 notarization, Sparkle, Homebrew; `swift test` with fixtures once Xcode is standard.
+
+## Milestones after M2 (lead's stages, 2026-11-05)
+
+- **S1, recording workflow (done 2026-11-05):** working Settings (folders,
+  default preset, microphone, camera, system audio, countdown; persisted and
+  read at take start), Pause/Resume on the launcher, pill and menu through
+  `CaptureSession.pause/resume` (one clock), markers mapped through
+  `recordingTime(forHostSeconds:)`, Show Recorder (⇧⌘R), Open Recording
+  (recent list and chooser), accessibility identifiers on the main controls.
+- **S2, AI script workflow:** `AssistantProvider` boundary, OpenAI Responses
+  API (streaming, cancel), OpenAI-compatible endpoint behind explicit
+  capability flags, Keychain for secrets, an Assistant panel that generates
+  and rewrites a script and replaces the teleprompter text only on accept;
+  mocked success/cancel/failure checks; real API check only with credentials.
+- **S3, editing and a bounded assistant:** interior cuts on `Timeline.cuts`
+  and `keptRanges()`, a typed `EditingAction` layer over `EditorModel.edit`
+  with validation and a project revision check, an assistant that proposes a
+  preview-able single-undo edit; stale or invalid proposals change nothing.
+- **Later:** timed transcription with word-level alignment (verify timestamp
+  support before choosing a model), searchable transcripts, word deletion,
+  styled captions and subtitle export; separate mic/system levels and loudness
+  cleanup; brand kits; embedded Codex through the app-server protocol and an
+  external MCP bridge, both over the S3 actions, as their own milestone.
+

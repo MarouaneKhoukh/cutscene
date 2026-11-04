@@ -22,7 +22,9 @@ protocol TakeRenderer: Sendable {
 /// A marker pressed on the pill while the take ran, by the host time of the
 /// press; it becomes a `takeMarker` event once the package is complete.
 struct TakeMarker: Sendable, Equatable {
-    let hostSeconds: Double
+    /// Seconds on the take's timeline, mapped through the clock so paused
+    /// intervals are excluded.
+    let recordingSeconds: Double
     let label: String?
 }
 
@@ -92,6 +94,8 @@ struct TakeMarker: Sendable, Equatable {
     }
     /// Recorded seconds so far, at the session's status cadence.
     private(set) var elapsedSeconds = 0.0
+    /// Mirrors the session's clock; true between Pause and Resume.
+    private(set) var isPaused = false
     private(set) var statistics = CaptureStatistics()
     /// The markers pressed during the running or last take.
     private(set) var markers: [TakeMarker] = []
@@ -254,8 +258,26 @@ struct TakeMarker: Sendable, Equatable {
     /// Stamps a marker at the moment of the call (the pill's Marker button;
     /// M3-02 adds the labelled "retake" form). Ignored unless recording.
     func mark(label: String? = nil) {
-        guard isRecording else { return }
-        markers.append(TakeMarker(hostSeconds: RecordingClock.hostTime().seconds, label: label))
+        guard isRecording, !isPaused, let take else { return }
+        let host = RecordingClock.hostTime().seconds
+        Task { @MainActor in
+            // Through the clock, never raw host-time subtraction: a pause
+            // before the marker would otherwise shift it late in the log.
+            guard let seconds = await take.session.recordingTime(forHostSeconds: host) else { return }
+            markers.append(TakeMarker(recordingSeconds: seconds, label: label))
+        }
+    }
+
+    /// Pauses the take's clock: screen, camera, audio, elapsed time, telemetry
+    /// and markers all stop together (ARCHITECTURE §2).
+    func pause() {
+        guard isRecording, !isPaused, let take else { return }
+        Task { try? await take.session.pause() }
+    }
+
+    func resume() {
+        guard isRecording, isPaused, let take else { return }
+        Task { try? await take.session.resume() }
     }
 
     /// Ends a render in flight and waits for it to wind down; the package
@@ -292,6 +314,7 @@ struct TakeMarker: Sendable, Equatable {
 
     private func apply(_ status: CaptureStatus) {
         elapsedSeconds = status.elapsedSeconds
+        isPaused = status.isPaused
         statistics = status.statistics
         switch status.phase {
         case .recording:
@@ -341,7 +364,7 @@ struct TakeMarker: Sendable, Equatable {
             var log = try EventLog.read(from: package.eventsURL)
             log.append(
                 contentsOf: markers.map {
-                    InputEvent.takeMarker(time: $0.hostSeconds - log.startHostTimeSeconds, label: $0.label)
+                    InputEvent.takeMarker(time: $0.recordingSeconds, label: $0.label)
                 })
             try log.write(to: package.eventsURL)
         } catch {
