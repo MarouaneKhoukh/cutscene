@@ -265,7 +265,7 @@ private struct SaveOnCloseInterceptor: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { context.coordinator.attach(to: view.window) }
+        DispatchQueue.main.async { context.coordinator.attach(to: view.window ?? view.superview?.window) }
         return view
     }
 
@@ -283,12 +283,28 @@ private struct SaveOnCloseInterceptor: NSViewRepresentable {
 
         init(model: EditorModel?) { self.model = model }
 
-        func attach(to window: NSWindow?) {
-            guard let window, window !== self.window else { return }
+        /// SwiftUI installs its own delegate after the window appears, so a
+        /// single early assignment gets replaced; re-assert on every update and
+        /// for a few run-loop turns after creation, keeping whatever delegate
+        /// SwiftUI set as the forwarding target.
+        func attach(to window: NSWindow?, retries: Int = 20) {
+            guard let window else {
+                if retries > 0 {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) { [weak self] in
+                        self?.attach(to: self?.window, retries: retries - 1)
+                    }
+                }
+                return
+            }
             self.window = window
             if window.delegate !== self {
-                original = window.delegate
+                if let current = window.delegate, current !== self { original = current }
                 window.delegate = self
+            }
+            if retries > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) { [weak self] in
+                    self?.attach(to: window, retries: retries - 1)
+                }
             }
         }
 
