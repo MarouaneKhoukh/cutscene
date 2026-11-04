@@ -75,6 +75,12 @@ struct WindowsByApplication: Identifiable, Sendable, Equatable {
             else { continue }
             let name = summary.applicationName ?? bundleID
             let title = summary.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // Helper processes (AutoFill panels, control-centre helpers) own
+            // layer-0 windows nobody wants to record; off-screen windows are
+            // offered only when they carry a title, which real documents do.
+            let helper =
+                name.localizedCaseInsensitiveContains("helper") || name.localizedCaseInsensitiveContains("autofill")
+            if helper || (!summary.isOnScreen && title.isEmpty) { continue }
             let choice = WindowChoice(
                 id: summary.id, title: title, applicationName: name, bundleID: bundleID, frame: summary.frame)
             byApplication[bundleID, default: (name, [])].windows.append(choice)

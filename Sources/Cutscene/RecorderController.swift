@@ -415,3 +415,11 @@ struct TakeMarker: Sendable, Equatable {
         }
     }
 }
+
+extension RecorderController.State {
+    /// True once the take has rendered; the launcher reopens itself on it.
+    var isDone: Bool {
+        if case .done = self { return true }
+        return false
+    }
+}

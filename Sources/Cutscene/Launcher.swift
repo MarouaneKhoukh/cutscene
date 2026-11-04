@@ -2,6 +2,7 @@ import AVFoundation
 import AppKit
 import CutsceneCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The numbers the launcher is drawn with (fixed size, PLAN M1-F6).
 struct LauncherSettings: Sendable, Equatable {
@@ -109,6 +110,13 @@ struct RecorderLauncher: View {
             meter.stop()
         }
         .onChange(of: source) { syncPreview() }
+        .onChange(of: model.windowGroups) { loadThumbnails() }
+        .onChange(of: model.recorder.state.isDone) { _, done in
+            if done {
+                NSApp.activate()
+                RecorderReopener.shared.open?()
+            }
+        }
         .onChange(of: model.recorder.isBusy) {
             syncPreview(); syncMeter()
         }
@@ -395,7 +403,8 @@ struct RecorderLauncher: View {
                             .resizable().aspectRatio(contentMode: .fit)
                             .clipShape(RoundedRectangle(cornerRadius: 6)).padding(3)
                     } else {
-                        Image(systemName: "macwindow").font(.title).foregroundStyle(.tertiary)
+                        Image(nsImage: Self.icon(forBundleID: window.bundleID))
+                            .resizable().frame(width: 48, height: 48)
                     }
                 }
                 .frame(height: settings.thumbnailWidth * 0.6)
@@ -487,9 +496,16 @@ struct RecorderLauncher: View {
                     Label("Show in Finder", systemImage: "folder")
                 }
                 .buttonStyle(.bordered)
+                Button {
+                    saveExportAs()
+                } label: {
+                    Label("Save as…", systemImage: "square.and.arrow.down")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("launcher.saveAs")
             }
-            Text("Recorded again? Pick a source on the left and press Record.").font(.caption).foregroundStyle(
-                .tertiary)
+            Text("Your video is in Movies › Cutscene › Exports. Record again from the sources on the left.")
+                .font(.caption).foregroundStyle(.tertiary)
         }
         .padding(16)
     }
@@ -643,13 +659,16 @@ struct RecorderLauncher: View {
     private func beginChoosingWindow() {
         model.refreshWindows(force: true)
         choosingWindow = true
+        loadThumbnails()
+    }
+
+    private func loadThumbnails() {
         let pixels = settings.thumbnailPixels
+        let ids = model.windowGroups.flatMap { $0.windows.map(\.id) }.filter { windowThumbnails[$0] == nil }
+        guard !ids.isEmpty else { return }
         Task {
-            // The list arrives asynchronously; thumbnails follow it.
-            try? await Task.sleep(for: .milliseconds(350))
-            let ids = model.windowGroups.flatMap { $0.windows.map(\.id) }
             let frames = await SourceScreenshots.thumbnails(for: ids, maximumPixels: pixels)
-            windowThumbnails = frames.mapValues(\.image)
+            for (id, frame) in frames { windowThumbnails[id] = frame.image }
         }
     }
 
@@ -707,6 +726,26 @@ struct RecorderLauncher: View {
                 exportThumbnail = image
             }
         }
+    }
+
+    /// Copies the last export to a place of the user's choosing.
+    private func saveExportAs() {
+        guard let source = model.lastExportURL else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = source.lastPathComponent
+        panel.allowedContentTypes = [.mpeg4Movie]
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            try? FileManager.default.removeItem(at: destination)
+            try? FileManager.default.copyItem(at: source, to: destination)
+        }
+    }
+
+    static func icon(forBundleID bundleID: String) -> NSImage {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        return NSImage(systemSymbolName: "macwindow", accessibilityDescription: nil) ?? NSImage()
     }
 
     private var elapsed: String {
