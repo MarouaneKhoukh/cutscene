@@ -110,6 +110,9 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
 
         recorder.onTakeComplete = { [weak self] package, _ in
             self?.defaults.remember(package: package.url)
+            // The journey continues in the editor unless the user asked for
+            // an automatic render instead.
+            if self?.defaults.autoRenderAfterStop == false { EditorOpener.shared.open?(package.url) }
         }
         recorder.onExportComplete = { [weak self] url in
             self?.defaults.lastExportURL = url
@@ -118,10 +121,7 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
             self?.recorderStateChanged(state)
         }
         // M1-13: every finished take is rendered into the exports folder.
-        recorder.renderer = AutoRender(
-            preset: { [defaults] in ExportPresetID(rawValue: defaults.defaultPresetID) },
-            destination: { [defaults] in defaults.exportsDirectory })
-
+        updateRenderer()
         refreshDisplays()
         refreshMicrophones()
         refreshCameras()
@@ -208,6 +208,16 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
         }
         areaSelection = picker
         picker.begin()
+    }
+
+    /// Installs the automatic render only when Settings asks for it.
+    func updateRenderer() {
+        recorder.renderer =
+            defaults.autoRenderAfterStop
+            ? AutoRender(
+                preset: { [defaults] in ExportPresetID(rawValue: defaults.defaultPresetID) },
+                destination: { [defaults] in defaults.exportsDirectory })
+            : nil
     }
 
     func pause() { recorder.pause() }

@@ -194,3 +194,10 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
 
     @objc func showRecorder() { open?() }
 }
+
+/// Opens the editor for a package from outside SwiftUI (the take-complete
+/// hook); the launcher installs the closure once it has `openWindow`.
+@MainActor final class EditorOpener {
+    static let shared = EditorOpener()
+    var open: ((URL) -> Void)?
+}

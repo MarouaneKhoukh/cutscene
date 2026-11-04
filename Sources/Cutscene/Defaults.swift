@@ -46,6 +46,7 @@ struct AppSettings: Sendable, Equatable {
         case recentPackages = "recent.packages"
         case countdownSeconds = "recorder.countdownSeconds"
         case defaultPresetID = "export.defaultPreset"
+        case autoRenderAfterStop = "export.autoRenderAfterStop"
     }
 
     let settings: AppSettings
@@ -62,6 +63,10 @@ struct AppSettings: Sendable, Equatable {
     /// Whole seconds counted down before a take; 0 skips the countdown.
     var countdownSeconds: Int {
         didSet { store.set(countdownSeconds, forKey: Key.countdownSeconds.rawValue) }
+    }
+    /// Whether a finished take renders by itself; off, the editor opens instead.
+    var autoRenderAfterStop: Bool {
+        didSet { store.set(autoRenderAfterStop, forKey: Key.autoRenderAfterStop.rawValue) }
     }
     /// The export preset the auto-render and the editor's sheet start from.
     var defaultPresetID: String {
@@ -92,6 +97,7 @@ struct AppSettings: Sendable, Equatable {
         microphoneID = store.string(forKey: Key.microphoneID.rawValue)
         countdownSeconds = store.object(forKey: Key.countdownSeconds.rawValue) as? Int ?? 3
         defaultPresetID = store.string(forKey: Key.defaultPresetID.rawValue) ?? "1080p"
+        autoRenderAfterStop = store.object(forKey: Key.autoRenderAfterStop.rawValue) as? Bool ?? false
         systemAudio = store.bool(forKey: Key.systemAudio.rawValue)
         recordingsDirectory =
             Self.directory(store.string(forKey: Key.recordingsDirectory.rawValue)) ?? settings.recordingsDirectory

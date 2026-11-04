@@ -97,6 +97,7 @@ struct RecorderLauncher: View {
         .onAppear {
             NSApp.activate()
             RecorderReopener.shared.open = { openWindow(id: "recorder") }
+            EditorOpener.shared.open = { openWindow(id: AppModel.editorWindowID, value: $0) }
             model.refreshDisplays()
             model.refreshWindows(force: true)
             model.refreshMicrophones()
@@ -112,7 +113,7 @@ struct RecorderLauncher: View {
         .onChange(of: source) { syncPreview() }
         .onChange(of: model.windowGroups) { loadThumbnails() }
         .onChange(of: model.recorder.state.isDone) { _, done in
-            if done {
+            if done, model.defaults.autoRenderAfterStop {
                 NSApp.activate()
                 RecorderReopener.shared.open?()
             }
@@ -686,6 +687,8 @@ struct RecorderLauncher: View {
     private func startRecording() {
         preview.stop()
         meter.stop()
+        // The pill is the recording indicator; the launcher gets out of the way.
+        NSApp.windows.first { $0.title == "Cutscene" }?.orderOut(nil)
         switch source {
         case .display(let display): model.record(display: display)
         case .window(let window): model.record(window: window)

@@ -10,6 +10,9 @@ struct SourceMenuSettings: Sendable, Equatable {
     /// Smallest window listed, in points on each side: anything under it is
     /// a tooltip, a status item or a helper window nobody means to record.
     var minimumWindowSide = 64.0
+    /// A window smaller than this is a palette or a popup, not a document.
+    var minimumListedWidth = 300.0
+    var minimumListedHeight = 180.0
     /// Only windows on this `CGWindowLevel` are listed: ordinary document
     /// windows sit at 0, while menus, panels, the Dock and the menu bar live
     /// on other levels and are no take of their own.
@@ -75,12 +78,24 @@ struct WindowsByApplication: Identifiable, Sendable, Equatable {
             else { continue }
             let name = summary.applicationName ?? bundleID
             let title = summary.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            // Helper processes (AutoFill panels, control-centre helpers) own
-            // layer-0 windows nobody wants to record; off-screen windows are
-            // offered only when they carry a title, which real documents do.
-            let helper =
-                name.localizedCaseInsensitiveContains("helper") || name.localizedCaseInsensitiveContains("autofill")
-            if helper || (!summary.isOnScreen && title.isEmpty) { continue }
+            // Only titled windows of document size: the window server also
+            // lists helper panels, toolbars, autofill popups and 64-pt stubs
+            // on layer 0, none of which anyone records.
+            let helper = ["helper", "autofill", "webview", "panel service", "uiviewservice"].contains {
+                name.localizedCaseInsensitiveContains($0)
+            }
+            if helper || title.isEmpty || summary.frame.width < settings.minimumListedWidth
+                || summary.frame.height < settings.minimumListedHeight
+            {
+                continue
+            }
+            if byApplication[bundleID]?.windows.contains(where: {
+                $0.title == title && $0.frame.size == summary.frame.size
+            })
+                == true
+            {
+                continue
+            }
             let choice = WindowChoice(
                 id: summary.id, title: title, applicationName: name, bundleID: bundleID, frame: summary.frame)
             byApplication[bundleID, default: (name, [])].windows.append(choice)

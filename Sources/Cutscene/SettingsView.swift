@@ -39,6 +39,11 @@ struct SettingsView: View {
             }
 
             Section("Export") {
+                Toggle("Render automatically after Stop", isOn: $defaults.autoRenderAfterStop)
+                    .onChange(of: defaults.autoRenderAfterStop) { model.updateRenderer() }
+                    .accessibilityIdentifier("settings.autoRender")
+                Text("Off: the editor opens with the new take, and you export from there.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Default preset", selection: $defaults.defaultPresetID) {
                     ForEach(ExportPresetID.allCases, id: \.rawValue) { preset in
                         Text(Self.title(of: preset)).tag(preset.rawValue)
