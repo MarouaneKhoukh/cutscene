@@ -166,6 +166,31 @@ struct MicrophoneChoice: Identifiable, Sendable, Equatable {
 
     /// Opens the area picker on every display; the take starts once a
     /// selection is confirmed, and a cancelled picker starts nothing.
+    /// Lets the user drag an area without starting a take, so the launcher
+    /// can preview it and record it later with `record(area:)`.
+    func pickArea(_ completion: @escaping @MainActor (AreaSelection?) -> Void) {
+        guard permissions.canRecord else {
+            showOnboarding()
+            completion(nil)
+            return
+        }
+        guard areaSelection == nil else {
+            completion(nil)
+            return
+        }
+        let picker = AreaSelectionController { [weak self] selection in
+            self?.areaSelection = nil
+            completion(selection)
+        }
+        areaSelection = picker
+        picker.begin()
+    }
+
+    /// Records an area chosen earlier with `pickArea`.
+    func record(area selection: AreaSelection) {
+        startTake(source: .area(displayID: selection.displayID, rect: selection.rect), named: .area)
+    }
+
     func recordArea() {
         guard permissions.canRecord else {
             showOnboarding()

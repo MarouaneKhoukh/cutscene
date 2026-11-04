@@ -1,24 +1,31 @@
 import AVFoundation
 import AppKit
+import CutsceneCore
 import SwiftUI
 
 /// The numbers the launcher is drawn with (fixed size, PLAN M1-F6).
 struct LauncherSettings: Sendable, Equatable {
-    var width = 860.0
-    var height = 600.0
+    var width = 880.0
+    var height = 620.0
     var padding = 20.0
     var previewCornerRadius = 18.0
-    var bubbleDiameter = 132.0
+    var bubbleSize = 150.0
+    var bubbleCornerRadius = 32.0
     var recordButtonDiameter = 64.0
     var chipCornerRadius = 12.0
+    var thumbnailPixels = 480.0
+    var thumbnailWidth = 220.0
 }
 
-/// What the launcher is pointed at. Area has no live preview: the selection
-/// overlay is drawn on the screen itself and recording starts from it.
+/// What the launcher is pointed at.
 enum LauncherSource: Equatable {
     case display(DisplayChoice)
     case window(WindowChoice)
-    case area
+    case area(AreaSelection)
+}
+
+private enum SourceKind: Int {
+    case display, window, area
 }
 
 /// The recorder window: a live look at the source, the camera bubble as it
@@ -30,8 +37,13 @@ struct RecorderLauncher: View {
     @Environment(\.openWindow) private var openWindow
     @State private var preview = SourcePreviewModel()
     @State private var meter = MicrophoneLevelModel()
+    @State private var teleprompter = TeleprompterController()
+    @State private var kind: SourceKind = .display
     @State private var source: LauncherSource?
+    @State private var windowThumbnails: [CGWindowID: CGImage] = [:]
+    @State private var choosingWindow = false
     @State private var exportThumbnail: CGImage?
+    @State private var showsTeleprompter = false
 
     var body: some View {
         ZStack {
@@ -40,7 +52,7 @@ struct RecorderLauncher: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing)
             VStack(spacing: 14) {
                 header
-                sourcePicker
+                sourceBar
                 previewCard
                 controls
             }
@@ -55,9 +67,7 @@ struct RecorderLauncher: View {
             model.refreshWindows()
             model.refreshMicrophones()
             model.refreshCameras()
-            if source == nil, let display = model.displays.first(where: \.isMain) ?? model.displays.first {
-                source = .display(display)
-            }
+            if source == nil { chooseMainDisplay() }
             syncPreview()
             syncMeter()
         }
@@ -96,18 +106,12 @@ struct RecorderLauncher: View {
 
     @ViewBuilder private var stateBadge: some View {
         switch model.recorder.state {
-        case .recording:
-            badge("Recording", color: .red)
-        case .countdown, .selecting:
-            badge("Starting", color: .orange)
-        case .finishing:
-            badge("Finishing", color: .orange)
-        case .rendering:
-            badge("Rendering", color: .blue)
-        case .failed, .renderFailed:
-            badge("Failed", color: .red)
-        case .idle, .done:
-            EmptyView()
+        case .recording: badge("Recording", color: .red)
+        case .countdown, .selecting: badge("Starting", color: .orange)
+        case .finishing: badge("Finishing", color: .orange)
+        case .rendering: badge("Rendering", color: .blue)
+        case .failed, .renderFailed: badge("Failed", color: .red)
+        case .idle, .done: EmptyView()
         }
     }
 
@@ -119,19 +123,18 @@ struct RecorderLauncher: View {
             .foregroundStyle(color)
     }
 
-    // MARK: Source
+    // MARK: Source bar
 
-    private var sourcePicker: some View {
-        HStack(spacing: 10) {
-            Picker("", selection: sourceKind) {
-                Label("Display", systemImage: "display").tag(0)
-                Label("Window", systemImage: "macwindow").tag(1)
-                Label("Area", systemImage: "rectangle.dashed").tag(2)
+    private var sourceBar: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: kindBinding) {
+                Label("Display", systemImage: "display").tag(SourceKind.display)
+                Label("Window", systemImage: "macwindow").tag(SourceKind.window)
+                Label("Area", systemImage: "rectangle.dashed").tag(SourceKind.area)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 320)
-            .disabled(model.recorder.isBusy)
+            .frame(width: 330)
 
             switch source {
             case .display(let chosen):
@@ -144,56 +147,65 @@ struct RecorderLauncher: View {
                 }
                 .fixedSize()
             case .window(let chosen):
-                Menu {
-                    ForEach(model.windowGroups) { group in
-                        Section(group.applicationName) {
-                            ForEach(group.windows) { window in
-                                Button(window.menuTitle(limit: model.sourceSettings.windowTitleLimit)) {
-                                    source = .window(window)
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                    Button("Refresh windows") { model.refreshWindows() }
-                } label: {
-                    Label("\(chosen.applicationName) · \(chosen.title)", systemImage: "macwindow")
-                        .lineLimit(1)
-                }
-                .fixedSize()
-            case .area:
-                Text("Press Record, then drag the area to capture.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Label("\(chosen.applicationName) · \(chosen.title)", systemImage: "macwindow").lineLimit(1)
+                Button("Change…") { beginChoosingWindow() }.buttonStyle(.bordered)
+            case .area(let area):
+                Label("\(Int(area.rect.width)) × \(Int(area.rect.height)) pt", systemImage: "rectangle.dashed")
+                Button("Change…") { pickArea() }.buttonStyle(.bordered)
             case nil:
-                EmptyView()
+                if kind == .window {
+                    Text("Pick a window below").foregroundStyle(.secondary)
+                } else if kind == .area {
+                    Button("Choose an area…") { pickArea() }.buttonStyle(.bordered)
+                }
             }
             Spacer()
         }
         .disabled(model.recorder.isBusy)
     }
 
-    private var sourceKind: Binding<Int> {
-        Binding(
-            get: {
-                switch source {
-                case .display, nil: 0
-                case .window: 1
-                case .area: 2
-                }
-            },
-            set: { kind in
-                switch kind {
-                case 1:
-                    model.refreshWindows()
-                    if let window = model.windowGroups.first?.windows.first { source = .window(window) }
-                case 2:
-                    source = .area
-                default:
-                    if let display = model.displays.first(where: \.isMain) ?? model.displays.first {
-                        source = .display(display)
-                    }
-                }
-            })
+    private var kindBinding: Binding<SourceKind> {
+        Binding(get: { kind }) { newKind in
+            guard newKind != kind else { return }
+            kind = newKind
+            switch newKind {
+            case .display: chooseMainDisplay()
+            case .window:
+                source = nil
+                beginChoosingWindow()
+            case .area:
+                source = nil
+                pickArea()
+            }
+        }
+    }
+
+    private func chooseMainDisplay() {
+        if let display = model.displays.first(where: \.isMain) ?? model.displays.first {
+            source = .display(display)
+        }
+    }
+
+    private func beginChoosingWindow() {
+        model.refreshWindows()
+        choosingWindow = true
+        let ids = model.windowGroups.flatMap { $0.windows.map(\.id) }
+        let pixels = settings.thumbnailPixels
+        Task {
+            let frames = await SourceScreenshots.thumbnails(for: ids, maximumPixels: pixels)
+            windowThumbnails = frames.mapValues(\.image)
+        }
+    }
+
+    private func pickArea() {
+        model.pickArea { selection in
+            if let selection {
+                source = .area(selection)
+            } else if source == nil {
+                kind = .display
+                chooseMainDisplay()
+            }
+        }
     }
 
     // MARK: Preview
@@ -202,22 +214,78 @@ struct RecorderLauncher: View {
         ZStack {
             RoundedRectangle(cornerRadius: settings.previewCornerRadius)
                 .fill(Color.black.opacity(0.55))
-            if let image = preview.image, !model.recorder.isBusy, source != .area {
+            if kind == .window, choosingWindow || source == nil, !model.recorder.isBusy {
+                windowGrid
+            } else if let image = preview.image, !model.recorder.isBusy {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: settings.previewCornerRadius - 4))
                     .padding(6)
+                cameraBubble
             } else {
                 previewPlaceholder
+                cameraBubble
             }
-            cameraBubble
             if !model.permissions.canRecord {
                 permissionOverlay
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(RoundedRectangle(cornerRadius: settings.previewCornerRadius).strokeBorder(.white.opacity(0.08)))
+    }
+
+    /// The window picker: one thumbnail per window, grouped by app.
+    private var windowGrid: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if model.windowGroups.isEmpty {
+                    Text(model.windowListError ?? "No windows to record").foregroundStyle(.secondary).padding()
+                }
+                ForEach(model.windowGroups) { group in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(group.applicationName).font(.headline).padding(.leading, 4)
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: settings.thumbnailWidth), spacing: 12)], spacing: 12
+                        ) {
+                            ForEach(group.windows) { window in
+                                windowCell(window)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private func windowCell(_ window: WindowChoice) -> some View {
+        Button {
+            source = .window(window)
+            choosingWindow = false
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.06))
+                    if let image = windowThumbnails[window.id] {
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .padding(4)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                }
+                .frame(height: settings.thumbnailWidth * 0.62)
+                Text(window.title.isEmpty ? window.applicationName : window.title)
+                    .font(.caption).lineLimit(1).foregroundStyle(.secondary)
+            }
+            .padding(6)
+            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.white.opacity(0.1)))
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder private var previewPlaceholder: some View {
@@ -235,7 +303,8 @@ struct RecorderLauncher: View {
             }
         case .finishing:
             VStack(spacing: 8) {
-                ProgressView(); Text("Finishing the take…").foregroundStyle(.secondary)
+                ProgressView()
+                Text("Finishing the take…").foregroundStyle(.secondary)
             }
         case .rendering(let progress):
             VStack(spacing: 10) {
@@ -244,17 +313,18 @@ struct RecorderLauncher: View {
                     .foregroundStyle(.secondary)
             }
         case .done, .idle, .failed, .renderFailed:
-            if source == .area {
-                VStack(spacing: 8) {
-                    Image(systemName: "rectangle.dashed").font(.system(size: 40)).foregroundStyle(.secondary)
-                    Text("The area is chosen on screen when you press Record.").foregroundStyle(.secondary)
-                }
-            } else if case .done = model.recorder.state, let thumbnail = exportThumbnail {
+            if case .done = model.recorder.state, let thumbnail = exportThumbnail {
                 resultCard(thumbnail)
             } else if case .failed(let error, _) = model.recorder.state {
                 failure("Recording failed", error)
             } else if case .renderFailed(let error, _) = model.recorder.state {
                 failure("Export failed", error)
+            } else if source == nil {
+                VStack(spacing: 8) {
+                    Image(systemName: kind == .area ? "rectangle.dashed" : "macwindow")
+                        .font(.system(size: 40)).foregroundStyle(.secondary)
+                    Text(kind == .area ? "Choose the area to record." : "Pick a window.").foregroundStyle(.secondary)
+                }
             } else {
                 VStack(spacing: 8) {
                     ProgressView()
@@ -311,19 +381,22 @@ struct RecorderLauncher: View {
         .padding()
     }
 
+    /// The bubble as the export draws it: a rounded square with a hairline
+    /// border and the card's shadow, bottom trailing.
     @ViewBuilder private var cameraBubble: some View {
         if let cameraID = model.sources.cameraID, !model.recorder.isBusy {
             let camera = model.cameras.first { $0.id == cameraID }
+            let shape = RoundedRectangle(cornerRadius: settings.bubbleCornerRadius, style: .continuous)
             VStack {
                 Spacer()
                 HStack {
                     Spacer()
                     CameraPreviewView(deviceID: cameraID, mirrored: camera?.isBuiltIn ?? true)
-                        .frame(width: settings.bubbleDiameter, height: settings.bubbleDiameter)
-                        .clipShape(Circle())
-                        .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 2))
-                        .shadow(radius: 14, y: 6)
-                        .padding(22)
+                        .frame(width: settings.bubbleSize, height: settings.bubbleSize)
+                        .clipShape(shape)
+                        .overlay(shape.strokeBorder(.white.opacity(0.4), lineWidth: 1.5))
+                        .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
+                        .padding(24)
                 }
             }
         }
@@ -357,6 +430,7 @@ struct RecorderLauncher: View {
             microphoneChip
             cameraChip
             systemAudioChip
+            teleprompterChip
             Spacer()
             recordButton
         }
@@ -417,8 +491,28 @@ struct RecorderLauncher: View {
         }
     }
 
+    /// The prompter floats on its own; it stays available while recording.
+    private var teleprompterChip: some View {
+        Button {
+            teleprompter.toggle()
+            showsTeleprompter = teleprompter.isVisible
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "text.alignleft")
+                Text("Teleprompter")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(
+                (showsTeleprompter ? Color.accentColor.opacity(0.35) : .white.opacity(0.07)),
+                in: RoundedRectangle(cornerRadius: settings.chipCornerRadius))
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("t", modifiers: [.command, .shift])
+    }
+
     private func chip<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 8, content: content)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 12).padding(.vertical, 8)
             .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: settings.chipCornerRadius))
             .disabled(model.recorder.isBusy)
@@ -469,7 +563,7 @@ struct RecorderLauncher: View {
         switch source {
         case .display(let display): model.record(display: display)
         case .window(let window): model.record(window: window)
-        case .area: model.recordArea()
+        case .area(let area): model.record(area: area)
         case nil: break
         }
     }
@@ -482,7 +576,10 @@ struct RecorderLauncher: View {
         switch source {
         case .display(let display): preview.start(.display(display.id))
         case .window(let window): preview.start(.window(window.id))
-        case .area, nil: preview.stop()
+        case .area(let area):
+            let rect = CGRect(x: area.rect.x, y: area.rect.y, width: area.rect.width, height: area.rect.height)
+            preview.start(.area(display: area.displayID, rect: rect))
+        case nil: preview.stop()
         }
     }
 

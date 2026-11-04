@@ -313,7 +313,7 @@ private func checkBubbleOverlay(_ checker: Checker) {
     checker.equal(BubbleSettings().size, 0.20, "bubble size default")
     checker.equal(BubbleSettings().inset, 0.03, "bubble inset default")
     checker.equal(BubbleSettings().corner, .bottomTrailing, "bubble corner default")
-    checker.equal(BubbleSettings().outline, .circle, "bubble outline default")
+    checker.equal(BubbleSettings().outline, .roundedRectangle, "bubble outline default")
     checker.equal(BubbleSettings().borderWidth, 0, "bubble border default")
 
     let hd = LayoutSolver.solve(canvas: .hd1080, contentAspectRatio: wide, settings: settings)
@@ -325,7 +325,7 @@ private func checkBubbleOverlay(_ checker: Checker) {
     checkRect(checker, bubble.rect, x: 1671.6, y: 831.6, width: 216, height: 216, "bottom-trailing, inset 32.4")
     checker.equal(bubble.arrangement, .overlay, "on 16:9 the bubble overlays the card")
     checker.check(bubble.rect.intersects(hd.card), "on 16:9 the bubble sits over the card by design")
-    checker.equal(bubble.outline, .circle, "the outline is the settings'")
+    checker.equal(bubble.outline, .roundedRectangle, "the outline is the settings'")
     checker.equal(bubble.cornerRadius, 18, "a rounded bubble shares the card's radius")
     checker.equal(bubble.borderWidth, 0, "no border by default")
     checker.check(canvasRect(.hd1080).contains(bubble.rect), "the bubble is inside the canvas")

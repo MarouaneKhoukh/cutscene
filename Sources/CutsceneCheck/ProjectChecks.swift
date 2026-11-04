@@ -156,7 +156,7 @@ private let kitFixture =
     "{\"background\":{\"gradient\":{\"angleDegrees\":45,\"from\":\"#1C2B4B\",\"to\":\"#4A1F5E\"},"
     + "\"kind\":\"linearGradient\",\"solid\":\"#1C2B4B\"},"
     + "\"camera\":{\"borderColor\":\"#FFFFFF\",\"borderWidth\":0,\"inset\":0.03,\"mirrorsBuiltInCameras\":true,"
-    + "\"position\":\"bottomTrailing\",\"shape\":\"circle\",\"size\":0.2,\"usesFrameShadow\":true},"
+    + "\"position\":\"bottomTrailing\",\"shape\":\"roundedRectangle\",\"size\":0.2,\"usesFrameShadow\":true},"
     + "\"cursor\":{\"click\":{\"color\":\"#FFFFFF\",\"duration\":0.5,\"easing\":\"easeOutCubic\",\"enabled\":true,"
     + "\"endOpacity\":0,\"endRadius\":44,\"endStrokeWidth\":0,\"maximumConcurrent\":4,\"startOpacity\":0.65,"
     + "\"startRadius\":0,\"startStrokeWidth\":2.5},"

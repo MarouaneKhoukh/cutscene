@@ -330,7 +330,7 @@ public enum BubblePosition: String, Codable, Sendable, CaseIterable {
 
 /// The camera bubble over the card.
 public struct CameraBubbleStyle: Sendable, Hashable, PreservesUnknownKeys {
-    public var shape: BubbleShape = .circle
+    public var shape: BubbleShape = .roundedRectangle
     /// Diameter (or height) as a fraction of the canvas height.
     public var size: Double = 0.20
     /// Distance from the canvas edges as a fraction of the canvas height.

@@ -3,56 +3,35 @@ import AppKit
 import ScreenCaptureKit
 import SwiftUI
 
-/// A screenshot of the selected source, refreshed a few times a second, so
-/// the launcher shows what a take would capture before Record is pressed.
-/// Screenshots rather than a stream: nothing to tear down when the real
-/// stream starts, and a 6 fps preview costs almost nothing.
-@MainActor @Observable
-final class SourcePreviewModel {
-    /// Seconds between refreshes (`launcher.previewInterval`).
-    var interval = 0.16
-    /// Longest side of the preview in pixels (`launcher.previewPixels`).
-    var maximumPixels = 1280.0
-    private(set) var image: CGImage?
-    private(set) var isLive = false
-    private var task: Task<Void, Never>?
+/// `CGImage` carries no Sendable annotation; it is immutable, so moving one
+/// across a capture task's boundary is safe.
+struct PreviewFrame: @unchecked Sendable {
+    let image: CGImage
+}
 
+/// Screenshots of displays and windows for the launcher: the live preview
+/// of the chosen source and the thumbnails of the window picker. Screenshots
+/// rather than a stream: nothing to tear down when the real stream starts.
+enum SourceScreenshots {
     enum Source: Equatable {
         case display(CGDirectDisplayID)
         case window(CGWindowID)
+        /// A display-local rectangle in points, as the area overlay reports it.
+        case area(display: CGDirectDisplayID, rect: CGRect)
     }
 
-    func start(_ source: Source) {
-        stop()
-        task = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                if let frame = await Self.capture(source, maximumPixels: maximumPixels) {
-                    image = frame.image
-                    isLive = true
-                }
-                try? await Task.sleep(for: .seconds(interval))
-            }
-        }
-    }
-
-    func stop() {
-        task?.cancel()
-        task = nil
-        isLive = false
-    }
-
-    /// `CGImage` carries no Sendable annotation; it is immutable, so moving
-    /// one across the capture task's boundary is safe.
-    private struct Frame: @unchecked Sendable {
-        let image: CGImage
-    }
-
-    private nonisolated static func capture(_ source: Source, maximumPixels: Double) async -> Frame? {
+    static func capture(_ source: Source, maximumPixels: Double) async -> PreviewFrame? {
         guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         else { return nil }
+        return await capture(source, in: content, maximumPixels: maximumPixels)
+    }
+
+    static func capture(_ source: Source, in content: SCShareableContent, maximumPixels: Double) async
+        -> PreviewFrame?
+    {
         let filter: SCContentFilter
         let size: CGSize
+        let configuration = SCStreamConfiguration()
         switch source {
         case .display(let id):
             guard let display = content.displays.first(where: { $0.displayID == id }) else { return nil }
@@ -62,10 +41,14 @@ final class SourcePreviewModel {
             guard let window = content.windows.first(where: { $0.windowID == id }) else { return nil }
             filter = SCContentFilter(desktopIndependentWindow: window)
             size = window.frame.size
+        case .area(let id, let rect):
+            guard let display = content.displays.first(where: { $0.displayID == id }) else { return nil }
+            filter = SCContentFilter(display: display, excludingWindows: [])
+            configuration.sourceRect = rect
+            size = rect.size
         }
         guard size.width > 0, size.height > 0 else { return nil }
         let scale = min(1, maximumPixels / max(size.width, size.height))
-        let configuration = SCStreamConfiguration()
         configuration.width = max(2, Int(size.width * scale))
         configuration.height = max(2, Int(size.height * scale))
         configuration.showsCursor = true
@@ -73,7 +56,50 @@ final class SourcePreviewModel {
         guard
             let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
         else { return nil }
-        return Frame(image: image)
+        return PreviewFrame(image: image)
+    }
+
+    /// One thumbnail per window, for the picker grid.
+    static func thumbnails(for windowIDs: [CGWindowID], maximumPixels: Double) async -> [CGWindowID: PreviewFrame] {
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        else { return [:] }
+        var result: [CGWindowID: PreviewFrame] = [:]
+        for id in windowIDs {
+            if let frame = await capture(.window(id), in: content, maximumPixels: maximumPixels) {
+                result[id] = frame
+            }
+        }
+        return result
+    }
+}
+
+/// The live preview of the selected source, refreshed a few times a second.
+@MainActor @Observable
+final class SourcePreviewModel {
+    /// Seconds between refreshes (`launcher.previewInterval`).
+    var interval = 0.16
+    /// Longest side of the preview in pixels (`launcher.previewPixels`).
+    var maximumPixels = 1280.0
+    private(set) var image: CGImage?
+    private var task: Task<Void, Never>?
+
+    func start(_ source: SourceScreenshots.Source) {
+        stop()
+        task = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                if let frame = await SourceScreenshots.capture(source, maximumPixels: maximumPixels) {
+                    image = frame.image
+                }
+                try? await Task.sleep(for: .seconds(interval))
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+        image = nil
     }
 }
 
@@ -103,6 +129,13 @@ final class CameraPreviewNSView: NSView {
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var currentDeviceID: String?
     private let queue = DispatchQueue(label: "app.cutscene.launcher.camera-preview")
+
+    /// AVFoundation's session and device carry no Sendable annotation; they
+    /// are used only on `queue`, so moving them there is safe.
+    private struct SessionBox: @unchecked Sendable {
+        let session: AVCaptureSession
+        let device: AVCaptureDevice?
+    }
 
     func configure(deviceID: String, mirrored: Bool) {
         if previewLayer == nil {
@@ -140,13 +173,6 @@ final class CameraPreviewNSView: NSView {
         queue.async { if box.session.isRunning { box.session.stopRunning() } }
     }
 
-    /// AVFoundation's session and device carry no Sendable annotation; they
-    /// are used only on `queue`, so moving them there is safe.
-    private struct SessionBox: @unchecked Sendable {
-        let session: AVCaptureSession
-        let device: AVCaptureDevice?
-    }
-
     override func layout() {
         super.layout()
         previewLayer?.frame = bounds
@@ -158,7 +184,7 @@ final class CameraPreviewNSView: NSView {
 /// ScreenCaptureKit, on its own clock.
 @MainActor @Observable
 final class MicrophoneLevelModel {
-    /// 0...1, smoothed; `launcher.meterAttack` / `launcher.meterRelease`.
+    /// 0...1, smoothed (`launcher.meterAttack` / `launcher.meterRelease`).
     private(set) var level = 0.0
     var attack = 0.6
     var release = 0.15

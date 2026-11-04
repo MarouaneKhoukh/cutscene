@@ -83,7 +83,7 @@ public enum BubbleCorner: Sendable, Hashable, CaseIterable {
 /// The camera bubble's constants (ARCHITECTURE §3 `camera`), present in a
 /// `LayoutSettings` only when the recording has a camera track.
 public struct BubbleSettings: Sendable, Hashable {
-    public var outline: BubbleOutline = .circle
+    public var outline: BubbleOutline = .roundedRectangle
     /// Diameter (or height) as a fraction of the canvas height.
     public var size: Double = 0.20
     /// Distance from the canvas edges as a fraction of the canvas height,
