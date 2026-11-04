@@ -109,6 +109,7 @@ struct EditorWindow: View {
             }
         }
         .frame(width: settings.windowWidth, height: settings.windowHeight)
+        .background(SaveOnCloseInterceptor(model: model))
         .navigationTitle(url.map { $0.deletingPathExtension().lastPathComponent } ?? "Editor")
         .task(id: url) { await load() }
         // A `.cutscene` package opened from the Finder (the bundle declares
@@ -251,5 +252,80 @@ private struct EditorContent: View {
         .lineLimit(1)
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+    }
+}
+
+/// Asks "Save changes?" when the editor window closes with edits, the way
+/// a document app does: Save writes `project.json`, Don't Save leaves the
+/// package as it was opened, Cancel keeps the window. The interceptor
+/// stands in front of the window's own delegate and forwards everything
+/// else to it.
+private struct SaveOnCloseInterceptor: NSViewRepresentable {
+    let model: EditorModel?
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { context.coordinator.attach(to: view.window) }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.model = model
+        context.coordinator.attach(to: nsView.window)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
+
+    @MainActor final class Coordinator: NSObject, NSWindowDelegate {
+        var model: EditorModel?
+        private weak var window: NSWindow?
+        private weak var original: NSWindowDelegate?
+
+        init(model: EditorModel?) { self.model = model }
+
+        func attach(to window: NSWindow?) {
+            guard let window, window !== self.window else { return }
+            self.window = window
+            if window.delegate !== self {
+                original = window.delegate
+                window.delegate = self
+            }
+        }
+
+        // NSObject's forwarding hooks are nonisolated; the window delegate
+        // only ever runs on the main thread, which is what the assumption says.
+        override nonisolated func responds(to aSelector: Selector!) -> Bool {
+            MainActor.assumeIsolated { super.responds(to: aSelector) || (original?.responds(to: aSelector) ?? false) }
+        }
+
+        override nonisolated func forwardingTarget(for aSelector: Selector!) -> Any? {
+            // The delegate is returned as an opaque object; `Any?` is not Sendable,
+            // so the hop out of the assumption is spelled out.
+            nonisolated(unsafe) var target: AnyObject?
+            MainActor.assumeIsolated { target = original as AnyObject? }
+            return target
+        }
+
+        func windowShouldClose(_ sender: NSWindow) -> Bool {
+            guard let model, model.isEdited, !model.discardsOnClose else {
+                return original?.windowShouldClose?(sender) ?? true
+            }
+            let alert = NSAlert()
+            alert.messageText = "Save changes to this recording?"
+            alert.informativeText = "Your edits are not saved yet. Don't Save keeps the recording as it was opened."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Don't Save")
+            alert.addButton(withTitle: "Cancel")
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                model.save()
+                return original?.windowShouldClose?(sender) ?? true
+            case .alertSecondButtonReturn:
+                model.discardsOnClose = true
+                return original?.windowShouldClose?(sender) ?? true
+            default:
+                return false
+            }
+        }
     }
 }

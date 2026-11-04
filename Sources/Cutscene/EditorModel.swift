@@ -430,7 +430,7 @@ struct LoadedPackage: Sendable {
             selectedSegmentID = nil
         }
         scheduleRebuild()
-        scheduleSave()
+        // No autosave: the window asks on close, and ⌘S saves on demand.
     }
 
     // MARK: Trim
@@ -711,13 +711,16 @@ struct LoadedPackage: Sendable {
 
     /// The window is closing: the pending save is written, the export in
     /// flight is cancelled and the player released. Safe to call twice.
+    /// Set by the close prompt's Don't Save: the edits stay in memory only.
+    var discardsOnClose = false
+
     func close() {
         endTransaction()
         isClosed = true
         rebuildGeneration += 1
         rebuildTask?.cancel()
         rebuildTask = nil
-        save()
+        if !discardsOnClose { save() }
         cancelExport()
         preview.tearDown()
     }
