@@ -36,7 +36,6 @@ enum LaunchArgument {
 struct CutsceneApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @State private var model: AppModel
-    private let panelSettings = RecorderPanelSettings()
     private let settingsStubSettings = SettingsStubSettings()
     /// Alive for the process when `--open-windows` was given, nil otherwise.
     private let launchWindows: LaunchWindowOpener?
@@ -76,11 +75,12 @@ struct CutsceneApp: App {
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
 
-        // On a notched MacBook a full menu bar hides new status items, which
-        // left the app unreachable on first use (observed 2026-11-04). The
-        // window carries the same controls as the menu; M2-09's HUD replaces it.
+        // The launcher: a live preview of the source, the camera bubble and
+        // the microphone meter around one Record button. Shown at launch
+        // because on a notched MacBook a full menu bar hides new status items
+        // (observed 2026-11-04).
         Window("Cutscene", id: "recorder") {
-            RecorderPanel(model: model, settings: panelSettings)
+            RecorderLauncher(model: model)
         }
         .defaultLaunchBehavior(.presented)
         .windowResizability(.contentSize)
@@ -141,54 +141,11 @@ struct CutsceneApp: App {
     }
 }
 
-/// The numbers the recorder window is drawn with.
-struct RecorderPanelSettings: Sendable, Equatable {
-    /// Fixed content size in points (PLAN M1-F6): the hosting window never
-    /// sizes itself from the menu's rows, which scroll when a state adds
-    /// lines (a failed take's message, the recording status).
-    var width = 360.0
-    var height = 520.0
-    var padding = 16.0
-    var rowSpacing = 10.0
-}
-
-/// The menu's controls in a window, for when the menu-bar icon cannot be
-/// reached. Fixed size: the hosting view must not size itself from its
-/// content (see PLAN M1-F6).
-struct RecorderPanel: View {
-    let model: AppModel
-    var settings = RecorderPanelSettings()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: settings.rowSpacing) {
-            HStack(spacing: 6) {
-                Image(systemName: model.recorder.state.menuBarSymbolName)
-                Text("Cutscene").font(.headline)
-                Spacer()
-                Text("also in the menu bar").font(.caption).foregroundStyle(.secondary)
-            }
-            ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: settings.rowSpacing) {
-                    MenuBarMenu(model: model)
-                }
-            }
-        }
-        .padding(settings.padding)
-        .frame(width: settings.width, height: settings.height)
-        .background(FloatingWindowConfigurator())
-        .onAppear {
-            // An LSUIElement app is never frontmost on its own; without this the
-            // window opens behind whatever was active.
-            NSApp.activate()
-        }
-    }
-}
-
 /// Makes the hosting window float above other apps and follow the user to
 /// every Space, full-screen apps included; a launch window that sits on the
 /// desktop Space is invisible to someone working in a full-screen app
 /// (observed 2026-11-04). The recording HUD (M2-09) needs the same behaviour.
-private struct FloatingWindowConfigurator: NSViewRepresentable {
+struct FloatingWindowConfigurator: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         configureWhenAttached(view, attempt: 0)
