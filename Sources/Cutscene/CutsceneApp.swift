@@ -44,6 +44,7 @@ struct CutsceneApp: App {
         _model = State(initialValue: model)
         launchWindows = LaunchArgument.isPresent(LaunchArgument.openWindows) ? LaunchWindowOpener(model: model) : nil
         appDelegate.model = model
+        appDelegate.showRecorder = { RecorderReopener.shared.open?() }
     }
 
     var body: some Scene {
@@ -99,6 +100,15 @@ struct CutsceneApp: App {
 /// killed a take mid-finish and lost an editor's debounced save.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
     var model: AppModel?
+    /// Shows the recorder window; set by the launcher once it has `openWindow`.
+    var showRecorder: (() -> Void)?
+
+    /// Opening the app again (Dock, `open`, Launchpad) with no window visible
+    /// brings the recorder back instead of doing nothing.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showRecorder?() }
+        return false
+    }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
@@ -174,4 +184,13 @@ struct FloatingWindowConfigurator: NSViewRepresentable {
         window.isMovableByWindowBackground = true
         window.orderFrontRegardless()
     }
+}
+
+/// Responder-chain target that reopens the recorder window from AppKit code
+/// (the delegate's reopen handler) without holding SwiftUI's `openWindow`.
+@MainActor final class RecorderReopener: NSObject {
+    static let shared = RecorderReopener()
+    var open: (() -> Void)?
+
+    @objc func showRecorder() { open?() }
 }

@@ -95,6 +95,7 @@ struct RecorderLauncher: View {
         .background(FloatingWindowConfigurator())
         .onAppear {
             NSApp.activate()
+            RecorderReopener.shared.open = { openWindow(id: "recorder") }
             model.refreshDisplays()
             model.refreshWindows(force: true)
             model.refreshMicrophones()
