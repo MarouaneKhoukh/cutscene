@@ -183,6 +183,24 @@ Effects are applied at render time from recorded metadata (cursor positions,
 clicks, keystrokes), never baked into the capture, so every choice stays
 editable.
 
+## Install from source
+
+Cutscene is built on the Mac that runs it; no download is published yet.
+
+Requirements: macOS 15 or later and the Xcode Command Line Tools
+(`xcode-select --install`, which brings Swift 6.2). Full Xcode is optional.
+
+```bash
+git clone git@github.com:MarouaneKhoukh/cutscene.git
+cd cutscene
+make dev-cert   # one-time: a local signing identity, so permission grants survive rebuilds
+make install    # builds, signs, copies Cutscene.app to /Applications and launches it
+```
+
+On first launch macOS asks for Screen Recording (once; relaunch after
+granting) and, when you enable them, the microphone and camera. To update,
+`git pull && make install`.
+
 ## Developing
 
 Requires macOS 15 or later and Xcode 16 or later. The Command Line Tools alone

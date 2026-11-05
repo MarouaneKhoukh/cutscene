@@ -1,6 +1,6 @@
 CONFIG ?= debug
 
-.PHONY: build test check spike bundle run dev-cert format clean
+.PHONY: build test check spike bundle run install dev-cert format clean
 
 ## Compile every target (works with the Command Line Tools alone).
 build:
@@ -27,6 +27,12 @@ bundle:
 run: bundle
 	@pkill -x Cutscene 2>/dev/null; for i in $$(seq 1 30); do pgrep -x Cutscene >/dev/null || break; sleep 0.1; done; true
 	open dist/Cutscene.app
+
+## Build, sign and copy the app into /Applications, then launch it from there.
+install: bundle
+	@pkill -x Cutscene 2>/dev/null; for i in $$(seq 1 30); do pgrep -x Cutscene >/dev/null || break; sleep 0.1; done; true
+	rm -rf /Applications/Cutscene.app && cp -R dist/Cutscene.app /Applications/Cutscene.app
+	open /Applications/Cutscene.app
 
 ## Create a local signing identity once, so permission grants survive rebuilds.
 dev-cert:
