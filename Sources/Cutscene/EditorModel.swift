@@ -37,7 +37,7 @@ struct EditorSettings: Sendable, Equatable {
     var inspectorWidth = 300.0
     /// Height of the transport bar and of the scrubber, in points.
     var transportHeight = 44.0
-    var scrubberHeight = 120.0
+    var scrubberHeight = 140.0
     /// Undo steps kept per window.
     var undoLevels = 200
     var preview = PreviewSettings()

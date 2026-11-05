@@ -40,10 +40,12 @@ struct TransportBar: View {
             }
             .help("Go to end")
 
-            Text("\(Self.clock(model.preview.currentTime)) / \(Self.clock(model.preview.duration))")
-                .font(.system(.body, design: .monospaced))
+            Text("\(Self.clock(model.preview.currentTime))")
+                .font(.system(.title3, design: .monospaced).weight(.medium))
+                .padding(.leading, 10)
+            Text("/ \(Self.clock(model.preview.duration))")
+                .font(.system(.callout, design: .monospaced))
                 .foregroundStyle(.secondary)
-                .padding(.leading, 8)
 
             Spacer()
 
@@ -63,8 +65,9 @@ struct TransportBar: View {
             .help("Redo")
         }
         .buttonStyle(.borderless)
+        .controlSize(.large)
         .disabled(model.preview.item == nil)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 14)
     }
 
     /// `m:ss.ff` with hundredths, enough to tell frames apart at 60 fps.

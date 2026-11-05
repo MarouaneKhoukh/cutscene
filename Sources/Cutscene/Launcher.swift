@@ -97,7 +97,7 @@ struct RecorderLauncher: View {
         .onAppear {
             NSApp.activate()
             RecorderReopener.shared.open = { openWindow(id: "recorder") }
-            EditorOpener.shared.open = { openWindow(id: AppModel.editorWindowID, value: $0) }
+            EditorOpener.shared.open = { EditorWindows.shared.open($0, appModel: model) }
             model.refreshDisplays()
             model.refreshWindows(force: true)
             model.refreshMicrophones()
@@ -181,7 +181,7 @@ struct RecorderLauncher: View {
             Spacer()
 
             Button {
-                if let url = model.lastRecordingURL { openWindow(id: AppModel.editorWindowID, value: url) }
+                if let url = model.lastRecordingURL { EditorWindows.shared.open(url, appModel: model) }
             } label: {
                 HStack {
                     Image(systemName: "slider.horizontal.3").frame(width: 20)
@@ -198,12 +198,12 @@ struct RecorderLauncher: View {
             Menu {
                 ForEach(model.recentPackages, id: \.self) { url in
                     Button(url.deletingPathExtension().lastPathComponent) {
-                        openWindow(id: AppModel.editorWindowID, value: url)
+                        EditorWindows.shared.open(url, appModel: model)
                     }
                 }
                 if !model.recentPackages.isEmpty { Divider() }
                 Button("Other recording…") {
-                    model.openRecording { openWindow(id: AppModel.editorWindowID, value: $0) }
+                    model.openRecording { EditorWindows.shared.open($0, appModel: model) }
                 }
             } label: {
                 HStack {
@@ -486,7 +486,7 @@ struct RecorderLauncher: View {
                 }
                 .buttonStyle(.borderedProminent)
                 Button {
-                    if let url = model.lastRecordingURL { openWindow(id: AppModel.editorWindowID, value: url) }
+                    if let url = model.lastRecordingURL { EditorWindows.shared.open(url, appModel: model) }
                 } label: {
                     Label("Edit", systemImage: "slider.horizontal.3")
                 }

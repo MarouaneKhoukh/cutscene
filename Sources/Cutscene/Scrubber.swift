@@ -1,3 +1,4 @@
+import AVFoundation
 import CutsceneCore
 import SwiftUI
 
@@ -6,13 +7,16 @@ struct ScrubberSettings: Sendable, Equatable {
     /// Points of margin on each side, so a handle at 0 s can still be grabbed.
     var horizontalInset = 14.0
     /// The time ruler's height at the top.
-    var rulerHeight = 18.0
+    var rulerHeight = 20.0
+    /// How many frame thumbnails the clip lane shows across its width.
+    var thumbnailCount = 18
+    var thumbnailPixelHeight = 120.0
     /// The clip lane: kept, trimmed, and the trim handles.
-    var clipLaneHeight = 34.0
+    var clipLaneHeight = 58.0
     /// The zoom lane under it.
-    var zoomLaneHeight = 30.0
+    var zoomLaneHeight = 26.0
     var laneSpacing = 8.0
-    var laneCornerRadius = 5.0
+    var laneCornerRadius = 8.0
     /// Width of a trim handle and of the strip a drag catches it in.
     var handleWidth = 8.0
     var handleHitWidth = 12.0
@@ -24,14 +28,15 @@ struct ScrubberSettings: Sendable, Equatable {
     var minimumTickSpacing = 70.0
     /// Tick intervals in seconds the ruler picks from, in order.
     var tickIntervals: [Double] = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
-    var keptColor = Color.accentColor.opacity(0.35)
-    var trimmedColor = Color.primary.opacity(0.08)
-    var handleColor = Color.accentColor
-    var automaticSegmentColor = Color.teal.opacity(0.7)
-    var manualSegmentColor = Color.orange.opacity(0.8)
-    var selectedSegmentOutline = Color.primary
-    var lockedOutline = Color.primary.opacity(0.6)
-    var playheadColor = Color.red
+    var keptColor = Color.white.opacity(0.0)
+    var trimmedColor = Color.black.opacity(0.55)
+    var laneColor = Color.white.opacity(0.06)
+    var handleColor = Color.white
+    var automaticSegmentColor = Color(red: 0.42, green: 0.55, blue: 1.0).opacity(0.85)
+    var manualSegmentColor = Color.orange.opacity(0.85)
+    var selectedSegmentOutline = Color.white
+    var lockedOutline = Color.white.opacity(0.6)
+    var playheadColor = Color(red: 1.0, green: 0.3, blue: 0.3)
     var rulerColor = Color.secondary
 }
 
@@ -58,6 +63,7 @@ struct Scrubber: View {
     var settings = ScrubberSettings()
 
     @State private var target: DragTarget?
+    @State private var thumbnails: [Image] = []
 
     var body: some View {
         GeometryReader { geometry in
@@ -65,6 +71,7 @@ struct Scrubber: View {
             Canvas { context, size in
                 draw(in: &context, size: size)
             }
+            .task(id: model.package.url) { await loadThumbnails() }
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
@@ -101,9 +108,11 @@ struct Scrubber: View {
         drawZoomLane(in: &context, size: size)
         let playheadX = x(forTime: model.playheadSourceTime, size: size)
         let playhead = CGRect(
-            x: playheadX - settings.playheadWidth / 2, y: settings.rulerHeight, width: settings.playheadWidth,
-            height: size.height - settings.rulerHeight)
+            x: playheadX - settings.playheadWidth / 2, y: settings.rulerHeight - 4, width: settings.playheadWidth,
+            height: size.height - settings.rulerHeight + 4)
         context.fill(Path(playhead), with: .color(settings.playheadColor))
+        let cap = Path(ellipseIn: CGRect(x: playheadX - 5, y: settings.rulerHeight - 9, width: 10, height: 10))
+        context.fill(cap, with: .color(settings.playheadColor))
     }
 
     private func drawRuler(in context: inout GraphicsContext, size: CGSize) {
@@ -128,31 +137,82 @@ struct Scrubber: View {
     private func drawClipLane(in context: inout GraphicsContext, size: CGSize) {
         let lane = CGRect(
             x: settings.horizontalInset, y: clipLaneY, width: trackWidth(size), height: settings.clipLaneHeight)
-        context.fill(
-            Path(roundedRect: lane, cornerRadius: settings.laneCornerRadius), with: .color(settings.trimmedColor))
-        for range in model.timeline.keptRanges() {
-            let kept = CGRect(
-                x: x(forTime: range.start, size: size), y: lane.minY,
-                width: x(forTime: range.end, size: size) - x(forTime: range.start, size: size), height: lane.height)
-            context.fill(Path(kept), with: .color(settings.keptColor))
+        let laneShape = Path(roundedRect: lane, cornerRadius: settings.laneCornerRadius)
+        context.fill(laneShape, with: .color(settings.laneColor))
+        // Frame thumbnails across the lane, clipped to its rounded shape.
+        if !thumbnails.isEmpty {
+            context.drawLayer { layer in
+                layer.clip(to: laneShape)
+                let width = lane.width / Double(thumbnails.count)
+                for (index, image) in thumbnails.enumerated() {
+                    let rect = CGRect(
+                        x: lane.minX + Double(index) * width, y: lane.minY, width: width + 0.5, height: lane.height)
+                    layer.draw(image, in: rect)
+                }
+            }
+        }
+        // Everything outside the kept ranges is dimmed, so what stays is what is bright.
+        let kept = model.timeline.keptRanges()
+        var cursor = lane.minX
+        context.drawLayer { layer in
+            layer.clip(to: laneShape)
+            for range in kept {
+                let startX = x(forTime: range.start, size: size)
+                if startX > cursor {
+                    layer.fill(
+                        Path(CGRect(x: cursor, y: lane.minY, width: startX - cursor, height: lane.height)),
+                        with: .color(settings.trimmedColor))
+                }
+                cursor = x(forTime: range.end, size: size)
+            }
+            if cursor < lane.maxX {
+                layer.fill(
+                    Path(CGRect(x: cursor, y: lane.minY, width: lane.maxX - cursor, height: lane.height)),
+                    with: .color(settings.trimmedColor))
+            }
         }
         for time in [model.trimStart, model.trimEnd] {
             let handle = CGRect(
-                x: x(forTime: time, size: size) - settings.handleWidth / 2, y: lane.minY, width: settings.handleWidth,
-                height: lane.height)
-            context.fill(
-                Path(roundedRect: handle, cornerRadius: settings.handleWidth / 3), with: .color(settings.handleColor))
+                x: x(forTime: time, size: size) - settings.handleWidth / 2, y: lane.minY - 2,
+                width: settings.handleWidth,
+                height: lane.height + 4)
+            let shape = Path(roundedRect: handle, cornerRadius: settings.handleWidth / 2.5)
+            context.fill(shape, with: .color(settings.handleColor))
+            context.stroke(shape, with: .color(.black.opacity(0.4)), lineWidth: 1)
             let grip = CGRect(
-                x: handle.midX - 0.5, y: handle.minY + handle.height * 0.3, width: 1, height: handle.height * 0.4)
-            context.fill(Path(grip), with: .color(.white.opacity(0.8)))
+                x: handle.midX - 0.5, y: handle.minY + handle.height * 0.35, width: 1, height: handle.height * 0.3)
+            context.fill(Path(grip), with: .color(.black.opacity(0.5)))
         }
+    }
+
+    /// Evenly spaced frames of the source movie, drawn under the clip lane.
+    private func loadThumbnails() async {
+        let count = settings.thumbnailCount
+        let duration = model.recordingDuration
+        guard duration > 0 else { return }
+        let url = model.package.url.appendingPathComponent("recording/screen.mp4")
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(
+            width: settings.thumbnailPixelHeight * 1.8, height: settings.thumbnailPixelHeight)
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+        var images: [Image] = []
+        for index in 0..<count {
+            let time = CMTime(seconds: (Double(index) + 0.5) / Double(count) * duration, preferredTimescale: 600)
+            if let (cgImage, _) = try? await generator.image(at: time) {
+                images.append(Image(decorative: cgImage, scale: 1))
+            }
+            if Task.isCancelled { return }
+        }
+        thumbnails = images
     }
 
     private func drawZoomLane(in context: inout GraphicsContext, size: CGSize) {
         let lane = CGRect(
             x: settings.horizontalInset, y: zoomLaneY, width: trackWidth(size), height: settings.zoomLaneHeight)
         context.fill(
-            Path(roundedRect: lane, cornerRadius: settings.laneCornerRadius), with: .color(settings.trimmedColor))
+            Path(roundedRect: lane, cornerRadius: settings.laneCornerRadius), with: .color(settings.laneColor))
         for segment in model.timeline.zoom.segments {
             let startX = x(forTime: segment.start, size: size)
             let endX = x(forTime: segment.end, size: size)

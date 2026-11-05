@@ -184,47 +184,68 @@ private struct EditorContent: View {
     @State private var showsExport = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
+        HStack(spacing: 14) {
+            VStack(spacing: 10) {
                 PreviewView(player: model.preview.player)
                     .background(Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.08)))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
                 TransportBar(model: model)
                     .frame(height: model.settings.transportHeight)
-                Divider()
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
                 Scrubber(model: model)
                     .frame(height: model.settings.scrubberHeight)
+                    .padding(.vertical, 6)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
                 statusLine
             }
-            Divider()
             VStack(spacing: 0) {
                 Picker("Inspector", selection: $tab) {
                     ForEach(InspectorTab.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .padding(10)
-                Divider()
+                .padding(12)
                 ScrollView {
                     switch tab {
                     case .style: StyleInspector(model: model)
                     case .zoom: ZoomInspector(model: model)
                     }
                 }
-            }
-            .frame(width: model.settings.inspectorWidth)
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+                Divider().overlay(.white.opacity(0.1))
                 Button {
                     showsExport = true
                 } label: {
-                    Label("Export…", systemImage: "square.and.arrow.up")
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.arrow.up")
+                        Text("Export video").font(.headline)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color(red: 0.42, green: 0.55, blue: 1.0), in: RoundedRectangle(cornerRadius: 10))
+                    .foregroundStyle(.white)
                 }
+                .buttonStyle(.plain)
                 .disabled(model.plan == nil)
+                .keyboardShortcut("e", modifiers: .command)
+                .padding(12)
+                .accessibilityIdentifier("editor.export")
             }
+            .frame(width: model.settings.inspectorWidth)
+            .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
         }
+        .background {
+            // ⌘S saves without a visible button; the close prompt covers the rest.
+            Button("Save") { model.save() }.keyboardShortcut("s").hidden()
+        }
+        .padding(14)
+        .background(
+            LinearGradient(
+                colors: [Color(red: 0.055, green: 0.06, blue: 0.09), Color(red: 0.10, green: 0.09, blue: 0.16)],
+                startPoint: .top, endPoint: .bottom)
+        )
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showsExport) {
             ExportSheet(model: model)
         }
@@ -239,7 +260,7 @@ private struct EditorContent: View {
         HStack(spacing: 12) {
             Text("Project from \(model.projectSource)")
             if model.isEdited {
-                Text(model.saveError.map { "Save failed: \($0)" } ?? "Edited · saves to project.json")
+                Text(model.saveError.map { "Save failed: \($0)" } ?? "Edited · unsaved (⌘S)")
                     .foregroundStyle(model.saveError == nil ? Color.secondary : Color.red)
             }
             if let error = model.rebuildError {

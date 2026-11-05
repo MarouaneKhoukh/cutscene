@@ -42,19 +42,19 @@ struct MenuBarMenu: View {
         Menu("Open Recording") {
             ForEach(model.recentPackages, id: \.self) { url in
                 Button(url.deletingPathExtension().lastPathComponent) {
-                    openWindow(id: AppModel.editorWindowID, value: url)
+                    EditorWindows.shared.open(url, appModel: model)
                 }
             }
             if !model.recentPackages.isEmpty { Divider() }
             Button("Other Recording…") {
-                model.openRecording { openWindow(id: AppModel.editorWindowID, value: $0) }
+                model.openRecording { EditorWindows.shared.open($0, appModel: model) }
             }
         }
         Button("Open Last Export") { model.openLastExport() }
             .disabled(model.lastExportURL == nil)
         Button("Open Last Recording") {
             if let url = model.lastRecordingURL {
-                openWindow(id: AppModel.editorWindowID, value: url)
+                EditorWindows.shared.open(url, appModel: model)
             }
         }
         .disabled(model.lastRecordingURL == nil)

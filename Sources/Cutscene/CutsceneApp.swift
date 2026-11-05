@@ -1,6 +1,7 @@
 import AppKit
 import CutsceneCore
 import SwiftUI
+import os
 
 /// The process entry: `--editor-check <package>` runs the editor's
 /// self-check (PLAN M2-10) without a window and exits; anything else is the app.
@@ -64,17 +65,6 @@ struct CutsceneApp: App {
             }
         }
 
-        // One editor per package: `openWindow(id:value:)` with the same URL
-        // brings the existing window forward. Never opened at launch and
-        // never restored: a menu-bar agent starts with no window but the
-        // recorder's.
-        WindowGroup("Editor", id: AppModel.editorWindowID, for: URL.self) { $url in
-            EditorWindow(url: $url, appModel: model)
-        }
-        .windowResizability(.contentSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-
         // The launcher: a live preview of the source, the camera bubble and
         // the microphone meter around one Record button. Shown at launch
         // because on a notched MacBook a full menu bar hides new status items
@@ -108,6 +98,29 @@ struct CutsceneApp: App {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { showRecorder?() }
         return false
+    }
+
+    /// Waits for the launcher to install the editor opener, then opens.
+    private static func openWhenReady(_ url: URL, attempts: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if let open = EditorOpener.shared.open {
+                Logger(subsystem: "app.cutscene", category: "editor").info(
+                    "launch hook: opening \(url.path, privacy: .public)")
+                open(url)
+            } else if attempts > 0 {
+                openWhenReady(url, attempts: attempts - 1)
+            } else {
+                Logger(subsystem: "app.cutscene", category: "editor").error("launch hook: no editor opener installed")
+            }
+        }
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Development hook: `--edit <package>` opens the editor at launch, for
+        // window captures without a hand on the mouse.
+        if let index = CommandLine.arguments.firstIndex(of: "--edit"), index + 1 < CommandLine.arguments.count {
+            Self.openWhenReady(URL(fileURLWithPath: CommandLine.arguments[index + 1]), attempts: 20)
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
