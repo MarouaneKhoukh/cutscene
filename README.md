@@ -187,8 +187,15 @@ editable.
 
 Cutscene is built on the Mac that runs it; no download is published yet.
 
-Requirements: macOS 15 or later and the Xcode Command Line Tools
-(`xcode-select --install`, which brings Swift 6.2). Full Xcode is optional.
+Requirements:
+
+- macOS 15 or later (Apple silicon or Intel).
+- The Xcode Command Line Tools: run `xcode-select --install` and accept the
+  dialog; it brings Swift 6.2. Full Xcode is not needed.
+- Access to this private repository: ask to be added as a collaborator, then
+  either add an SSH key to your GitHub account or use the HTTPS URL
+  (`https://github.com/MarouaneKhoukh/cutscene.git`) and sign in when `git`
+  asks.
 
 ```bash
 git clone git@github.com:MarouaneKhoukh/cutscene.git
@@ -197,9 +204,30 @@ make dev-cert   # one-time: a local signing identity, so permission grants survi
 make install    # builds, signs, copies Cutscene.app to /Applications and launches it
 ```
 
-On first launch macOS asks for Screen Recording (once; relaunch after
-granting) and, when you enable them, the microphone and camera. To update,
-`git pull && make install`.
+`make dev-cert` asks for your Mac login password once (it marks the new
+certificate as trusted for code signing in your login keychain; nothing
+leaves the machine). The first `make install` compiles everything and takes
+a few minutes; later ones are quick. To update, `git pull && make install`.
+
+### First recording (a five-minute test)
+
+1. Cutscene has no Dock icon: look for the ◎ record icon in the menu bar. The
+   recorder window opens on its own at launch (or choose Show Recorder,
+   ⇧⌘R).
+2. Pick **Display**, enable the microphone, and press **Record**. macOS asks
+   for Screen Recording: allow it, then quit and relaunch Cutscene once (the
+   grant only applies to a fresh launch). The microphone and camera prompts
+   appear the first time you enable each one.
+3. The window hides and a small recording pill appears. Click around, type
+   something, then press **Stop** in the pill or the menu bar.
+4. The editor opens with the take: trim, scrub, and press **Export video**
+   (⌘E). The MP4 lands in `~/Movies/Cutscene/Exports` by default (Settings changes
+   the folder and preset).
+
+If recording never starts or keeps prompting, check System Settings >
+Privacy & Security > Screen & System Audio Recording for Cutscene, or reset
+the grant with `tccutil reset ScreenCapture app.cutscene.Cutscene` and
+relaunch.
 
 ## Developing
 
